@@ -1,21 +1,21 @@
 'use client';
 
-import { useTRPC } from '@/hooks/use-trpc';
 import { Avatar, AvatarFallback, AvatarImage } from '@workspace/ui/components/avatar';
 import { Award, Calendar, Globe, MapPin, Share } from 'lucide-react';
 import ResponsiveNumber from '@/components/user/responsive-numbers';
 import { Card, CardContent } from '@workspace/ui/components/card';
 import { Skeleton } from '@workspace/ui/components/skeleton';
 import { useQueries, useQuery } from '@tanstack/react-query';
+import { projectProviderEnum } from '@workspace/db/schema';
 import { Button } from '@workspace/ui/components/button';
 import Icons from '@workspace/ui/components/icons';
 import { RecentActivity } from './recent-activity';
+import { isValidProvider } from '@/lib/constants';
 import Link from '@workspace/ui/components/link';
 import { ProfileTabs } from './profile-tabs';
 import { useEffect, useState } from 'react';
+import { useTRPC } from '@/hooks/use-trpc';
 import { useQueryState } from 'nuqs';
-import {isValidProvider, RepoContent} from '@/lib/constants'
-import { projectProviderEnum } from '@workspace/db/schema';
 
 export default function ProfilePage({ id }: { id: string }) {
   const trpc = useTRPC();
@@ -37,15 +37,18 @@ export default function ProfilePage({ id }: { id: string }) {
     trpc.profile.getProfile.queryOptions({ id }),
   );
 
-  const { data: unSubmittedProjects, isLoading: isUnSubmittedLoading } = useQuery(
-    trpc.projects.getUnSubmitted.queryOptions({
-      provider: profile?.git.provider as 'github' | 'gitlab',
-      username: profile?.username!,
-      userId: profile?.id!
-    }, {
-      enabled: !!profile?.git.provider && !!profile?.username && !!profile?.id
-    })
-  )
+  const { data: unSubmittedProjects } = useQuery(
+    trpc.projects.getUnSubmitted.queryOptions(
+      {
+        provider: profile?.git.provider as 'github' | 'gitlab',
+        username: profile?.username ?? '',
+        userId: profile?.id ?? '',
+      },
+      {
+        enabled: !!profile?.git.provider && !!profile?.username && !!profile?.id,
+      },
+    ),
+  );
 
   const { data: projects } = useQuery(
     trpc.projects.getProjectsByUserId.queryOptions(
@@ -70,31 +73,18 @@ export default function ProfilePage({ id }: { id: string }) {
     return `https://${url}`;
   };
 
-  const [profileReadme, setProfileReadme] = useState<RepoContent | null >(null);
-
-// 2️⃣ TRPC query to fetch profile README
-const readmeQuery = useQueries({
-  queries: [
+  const { data: profileReadme, isPending: isReadmeLoading } = useQuery(
     trpc.repository.getReadme.queryOptions(
       {
-        url: `${profile?.username}/${profile?.username}`, // repo name = username
-        provider: profile?.git?.provider  as (typeof projectProviderEnum.enumValues)[number],
+        url: `${profile?.username}/${profile?.username}`,
+        provider: profile?.git?.provider as (typeof projectProviderEnum.enumValues)[number],
       },
       {
-        enabled: !!profile?.username && isValidProvider(profile?.git.provider),
+        enabled: !!profile?.username && isValidProvider(profile?.git?.provider),
         retry: false,
-      }
+      },
     ),
-  ],
-});
-
-
-// 3️⃣ Update state when query finishes
-useEffect(() => {
-  if (readmeQuery?.[0]?.data) {
-    setProfileReadme(readmeQuery[0].data as RepoContent);
-  }
-}, [readmeQuery]);
+  );
 
   const projectQueries = useQueries({
     queries: (projects?.data || []).map((project) => {
@@ -278,14 +268,15 @@ useEffect(() => {
 
             <div className="space-y-4 lg:col-span-8">
               <ProfileTabs
-                profileReadme={profileReadme}
+                isReadmeLoading={isReadmeLoading}
+                profileReadme={profileReadme ?? null}
                 profile={profile}
                 isProfileLoading={isProfileLoading}
                 tab={tab}
                 setTab={setTab}
                 featuredProjects={featuredProjects}
                 projectsWithGithubData={projectsWithGithubData ?? []}
-                unsubmittedProjects={ unSubmittedProjects ?? []}
+                unsubmittedProjects={unSubmittedProjects ?? []}
               />
             </div>
             {profile?.id && (
